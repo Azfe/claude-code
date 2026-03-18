@@ -4,7 +4,7 @@ import { Course as CourseComponent } from "@/components/Course/Course";
 import Link from "next/link";
 
 async function getCourses(): Promise<Course[]> {
-  const res = await fetch("http://localhost:8000/courses", { cache: "no-store" });
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/courses`, { cache: "no-store" });
   if (!res.ok) {
     throw new Error("Failed to fetch courses");
   }

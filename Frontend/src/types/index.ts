@@ -24,6 +24,7 @@ export interface Class {
 export interface CourseDetail extends Course {
   description: string;
   classes: Class[];
+  rating_distribution?: Record<number, number>; // { 1: n, 2: n, 3: n, 4: n, 5: n }
 }
 
 // Progress types

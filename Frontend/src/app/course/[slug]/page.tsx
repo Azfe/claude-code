@@ -9,7 +9,7 @@ interface CoursePageProps {
 }
 
 async function getCourseData(slug: string): Promise<CourseDetail> {
-  const response = await fetch(`http://localhost:8000/courses/${slug}`, {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/courses/${slug}`, {
     cache: "no-store", // Ensures fresh data on each request
   });
 
@@ -34,7 +34,7 @@ export async function generateMetadata({ params }: CoursePageProps) {
   const courseData = await getCourseData(params.slug);
 
   return {
-    title: `${courseData.title} - Curso Online`,
+    title: `${courseData.name} - Curso Online`,
     description: courseData.description,
   };
 }
