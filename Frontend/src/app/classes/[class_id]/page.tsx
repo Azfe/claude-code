@@ -8,7 +8,7 @@ interface ClassPageProps {
 }
 
 async function getClassData(class_id: string): Promise<Class> {
-  const res = await fetch(`http://localhost:8000/classes/${class_id}`, { cache: "no-store" });
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/classes/${class_id}`, { cache: "no-store" });
   if (!res.ok) throw new Error("No se pudo cargar la clase");
   return res.json();
 }

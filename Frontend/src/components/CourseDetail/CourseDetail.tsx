@@ -1,6 +1,7 @@
 import { FC } from "react";
 import Link from "next/link";
 import { CourseDetail } from "@/types";
+import { RatingSection } from "@/components/RatingSection/RatingSection";
 import styles from "./CourseDetail.module.scss";
 
 interface CourseDetailComponentProps {
@@ -25,12 +26,16 @@ export const CourseDetailComponent: FC<CourseDetailComponentProps> = ({ course }
       </div>
       <div className={styles.header}>
         <div className={styles.thumbnailContainer}>
-          <img src={course.thumbnail} alt={course.title} className={styles.thumbnail} />
+          <img src={course.thumbnail} alt={course.name} className={styles.thumbnail} />
         </div>
         <div className={styles.courseInfo}>
-          <h1 className={styles.title}>{course.title}</h1>
-          <p className={styles.teacher}>Por {course.teacher}</p>
+          <h1 className={styles.title}>{course.name}</h1>
           <p className={styles.description}>{course.description}</p>
+          <RatingSection
+            courseId={course.id}
+            initialAverageRating={course.average_rating ?? 0}
+            initialTotalRatings={course.total_ratings ?? 0}
+          />
           <div className={styles.stats}>
             <span className={styles.duration}>Duración total: {formatDuration(totalDuration)}</span>
             <span className={styles.classCount}>{course.classes.length} clases</span>

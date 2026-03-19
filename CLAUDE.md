@@ -1,155 +1,227 @@
 # Platziflix - Proyecto Multi-plataforma
 
-## Arquitectura del Sistema
+Plataforma de cursos online estilo Netflix con arquitectura multi-cliente. Un único Backend REST sirve a tres clientes independientes: Web, Android e iOS.
 
-Platziflix es una plataforma de cursos online con arquitectura multi-plataforma que incluye:
-- **Backend**: API REST con FastAPI + PostgreSQL
-- **Frontend**: Aplicación web con Next.js 15
-- **Mobile**: Apps nativas Android (Kotlin) + iOS (Swift)
+## Arquitectura General
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                        CLIENTES                              │
+│  ┌────────────────┐  ┌─────────────┐  ┌──────────────────┐  │
+│  │  Next.js 15    │  │   Android   │  │       iOS        │  │
+│  │  TypeScript    │  │   Kotlin    │  │      Swift       │  │
+│  └───────┬────────┘  └──────┬──────┘  └────────┬─────────┘  │
+└──────────┼─────────────────┼───────────────────┼────────────┘
+           └─────────────────┼───────────────────┘
+                             │ HTTP REST (JSON)
+                             ▼
+┌──────────────────────────────────────────────────────────────┐
+│              BACKEND — FastAPI / Python 3.11                 │
+│  Routes → CourseService → SQLAlchemy ORM → PostgreSQL 15     │
+└──────────────────────────────────────────────────────────────┘
+```
 
 ## Stack Tecnológico
 
-### Backend (FastAPI/Python)
-- **Framework**: FastAPI
-- **Base de datos**: PostgreSQL 15
-- **ORM**: SQLAlchemy 2.0
-- **Migraciones**: Alembic
-- **Container**: Docker + Docker Compose
-- **Gestión dependencias**: UV
-- **Puerto**: 8000
-
-### Frontend (Next.js)
-- **Framework**: Next.js 15 (App Router)
-- **React**: 19.0
-- **Lenguaje**: TypeScript
-- **Estilos**: SCSS + CSS Modules
-- **Testing**: Vitest + React Testing Library
-- **Fonts**: Geist Sans & Geist Mono
-
-### Mobile
-- **Android**: Kotlin + Jetpack Compose + Retrofit
-- **iOS**: Swift + SwiftUI + Repository Pattern
+| | Backend | Frontend | Android | iOS |
+|---|---|---|---|---|
+| **Lenguaje** | Python 3.11 | TypeScript | Kotlin | Swift |
+| **Framework** | FastAPI | Next.js 15 | Jetpack Compose | SwiftUI |
+| **Estado/DB** | SQLAlchemy 2.0 | Server Components | StateFlow | Combine |
+| **Arquitectura** | Service Layer | App Router + SSR | MVVM + MVI | MVVM |
+| **HTTP** | REST API | `fetch` nativo | Retrofit2 | URLSession |
+| **Testing** | Pytest | Vitest + RTL | Instrumented | XCTest |
+| **Puerto** | 8000 | 3000 | — | — |
 
 ## Estructura del Proyecto
 
 ```
 claude-code/
-├── Backend/           # API FastAPI + PostgreSQL
-├── Frontend/          # Next.js 15 App
-└── Mobile/
-    ├── PlatziFlixAndroid/  # Kotlin App
-    └── PlatziFlixiOS/      # Swift App
+├── Backend/                    # FastAPI + PostgreSQL (Docker)
+├── Frontend/                   # Next.js 15 App
+├── Mobile/
+│   ├── PlatziFlixAndroid/      # Kotlin + Jetpack Compose
+│   └── PlatziFlixiOS/          # Swift + SwiftUI
+└── spec/                       # Especificaciones de implementación
 ```
 
-## Modelo de Datos
+## Backend
 
-### Entidades Principales
-- **Course**: Cursos (name, description, thumbnail, slug)
-- **Teacher**: Profesores
-- **Lesson**: Lecciones de un curso
-- **Class**: Clases individuales de una lección
+### Estructura interna
 
-### Relaciones
-- Course ↔ Teacher (Many-to-Many via course_teachers)
-- Course → Lesson (One-to-Many)
-- Lesson → Class (One-to-Many)
+```
+Backend/app/
+├── main.py                     # Entry point FastAPI
+├── core/config.py              # Settings & env vars
+├── db/
+│   ├── base.py                 # Engine + Session SQLAlchemy
+│   └── seed.py                 # Datos de prueba
+├── models/                     # ORM models (todos con soft delete)
+│   ├── base.py                 # BaseModel: id, created_at, updated_at, deleted_at
+│   ├── course.py
+│   ├── course_rating.py        # rating 1-5, UNIQUE(course_id, user_id) WHERE deleted_at IS NULL
+│   ├── teacher.py
+│   ├── lesson.py
+│   ├── class_.py
+│   └── course_teacher.py       # Junction table M2M
+├── schemas/                    # Pydantic v2 (validación request/response)
+│   └── rating.py
+├── services/
+│   └── course_service.py       # Toda la lógica de negocio
+└── alembic/versions/           # Migraciones de DB
+```
 
-## API Endpoints
+### Modelo de datos
 
-- `GET /` - Bienvenida
-- `GET /health` - Health check + DB connectivity
-- `GET /courses` - Lista todos los cursos
-- `GET /courses/{slug}` - Detalle de curso por slug
+```
+Course ←──(M2M via course_teachers)──→ Teacher
+Course ──(1toM)──→ Lesson
+Course ──(1toM)──→ CourseRating (user_id, rating 1-5, soft delete)
+```
 
-## Comandos de Desarrollo
+Todos los modelos tienen `deleted_at`; las queries filtran `WHERE deleted_at IS NULL`.
 
-### Backend
+### API Endpoints
+
+```
+GET  /                                    # Bienvenida
+GET  /health                              # Health check + DB connectivity
+GET  /courses                             # Todos los cursos con rating stats
+GET  /courses/{slug}                      # Detalle: profesores + lecciones + ratings
+GET  /classes/{class_id}                  # Detalle de clase (video)
+
+POST   /courses/{id}/ratings              # Crear/actualizar rating (upsert)
+GET    /courses/{id}/ratings              # Todos los ratings del curso
+GET    /courses/{id}/ratings/stats        # { average_rating, total_ratings, distribution }
+GET    /courses/{id}/ratings/user/{uid}   # Rating de un usuario específico
+PUT    /courses/{id}/ratings/{uid}        # Actualizar rating (falla si no existe)
+DELETE /courses/{id}/ratings/{uid}        # Soft delete del rating
+```
+
+### Base de datos (Docker)
+
+- **Usuario**: `platziflix_user`
+- **Password**: `platziflix_password`
+- **Database**: `platziflix_db`
+- **Puerto**: `5432`
+
+### Comandos Backend
+
+> **IMPORTANTE**: Antes de ejecutar comandos del Backend, verifica que el contenedor Docker esté corriendo. Revisa el `Makefile` para los comandos disponibles y úsalos.
+
 ```bash
 cd Backend
-make start        # Iniciar Docker Compose
-make stop         # Detener containers
-make migrate      # Ejecutar migraciones
-make seed         # Poblar datos de prueba
-make logs         # Ver logs
+make start            # Iniciar Docker Compose (API + DB)
+make stop             # Detener containers
+make migrate          # Aplicar migraciones Alembic
+make create-migration # Crear nueva migración
+make seed             # Poblar datos de prueba
+make seed-fresh       # Reset completo + seed
+make logs             # Ver logs de todos los servicios
 ```
 
-### Frontend
+## Frontend
+
+### Estructura interna
+
+```
+Frontend/src/
+├── app/                            # Next.js App Router
+│   ├── layout.tsx                  # Root layout
+│   ├── page.tsx                    # Home: grid de cursos (Server Component)
+│   ├── course/[slug]/
+│   │   ├── page.tsx                # Detalle del curso (SSR, cache: no-store)
+│   │   ├── loading.tsx             # Skeleton
+│   │   ├── error.tsx               # Error boundary
+│   │   └── not-found.tsx
+│   └── classes/[class_id]/
+│       └── page.tsx                # Video player
+├── components/
+│   ├── Course/                     # Tarjeta con StarRating
+│   ├── CourseDetail/               # Vista detallada
+│   ├── StarRating/                 # SVG half-stars, readonly, accesible
+│   └── VideoPlayer/                # Reproductor (plyr)
+├── services/
+│   └── ratingsApi.ts               # HTTP client con timeout 10s + AbortController
+├── types/
+│   ├── index.ts                    # Course, Class, CourseDetail
+│   └── rating.ts                  # CourseRating, RatingStats, ApiError
+└── styles/
+    ├── reset.scss
+    └── vars.scss                   # Design tokens
+```
+
+### Patrones Frontend
+
+- **Server Components** para fetch inicial (sin JS overhead en cliente)
+- `fetch` nativo con `AbortController` (timeout 10s por defecto)
+- CSS Modules + SCSS, sin librerías de UI externas
+- TypeScript strict
+
+### Comandos Frontend
+
 ```bash
 cd Frontend
-yarn dev          # Servidor de desarrollo
+yarn dev          # Servidor de desarrollo (localhost:3000)
 yarn build        # Build de producción
-yarn test         # Ejecutar tests
-yarn lint         # Linter
+yarn test         # Ejecutar tests con Vitest
+yarn lint         # ESLint
 ```
 
-## URLs del Sistema
+## Mobile — Android
 
-- **Backend API**: http://localhost:8000
-- **Frontend Web**: http://localhost:3000
-- **API Docs**: http://localhost:8000/docs (FastAPI Swagger)
+### Arquitectura: MVVM + MVI + Repository Pattern
 
-## Base de Datos
+```
+Presentation
+└── CourseListScreen (Composable)
+    └── CourseListViewModel (StateFlow)
+        └── CourseRepository (Interface)
+            ├── RemoteCourseRepository → Retrofit2 → API
+            └── MockCourseRepository  → datos de prueba
 
-### Configuración Docker
-- **Usuario**: platziflix_user
-- **Password**: platziflix_password
-- **Database**: platziflix_db
-- **Puerto**: 5432
+Domain: Course.kt (modelo puro, sin dependencias Android)
+Data:   CourseDTO → CourseMapper → Course
+DI:     Manual con `by lazy { }` en AppModule
+```
 
-### Migraciones
-- Ubicación: `Backend/app/alembic/versions/`
-- Comando crear: `make create-migration`
-- Comando aplicar: `make migrate`
+- Eventos unidireccionales: `UiEvent` → ViewModel → `UiState`
+- Coroutines con `viewModelScope.launch { }`
 
-## Funcionalidades Implementadas
+## Mobile — iOS
 
-- ✅ Catálogo de cursos con grid estilo Netflix
-- ✅ Detalle de cursos (profesores, lecciones, clases)
-- ✅ Navegación por slug SEO-friendly
-- ✅ Reproductor de video integrado
-- ✅ Health checks de API y DB
-- ✅ Apps móviles nativas (Android + iOS)
-- ✅ Testing en todos los componentes
+### Arquitectura: MVVM + Repository Protocol + Combine
 
-## Patrones de Desarrollo
+```
+Views (SwiftUI)
+└── CourseListView
+    └── CourseListViewModel (@MainActor, @Published)
+        └── CourseRepositoryProtocol
+            └── RemoteCourseRepository → URLSession async/await → API
 
-### Backend
-- **Arquitectura**: Service Layer Pattern
-- **Dependency Injection**: FastAPI Dependencies
-- **Database**: Repository Pattern con SQLAlchemy
+Data: CourseDTO (Codable) → CourseMapper → Course
+Services: APIEndpoint protocol + CourseAPIEndpoints enum
+```
 
-### Frontend
-- **Routing**: Next.js App Router
-- **Data Fetching**: Server Components + fetch
-- **Styling**: CSS Modules + SCSS
-- **Testing**: Component testing con Vitest
-
-### Mobile
-- **Android**: MVVM + Jetpack Compose
-- **iOS**: SwiftUI + Repository + Mapper Pattern
+- `@Published` + Combine para reactividad en la UI
+- `async/await` para networking
+- Protocol de repositorio para testabilidad e inyección de dependencias
 
 ## Consideraciones de Desarrollo
 
-1. **Docker obligatorio** para el backend (DB + API)
-2. **TypeScript strict** en Frontend
-3. **Testing requerido** para nuevas funcionalidades
-4. **Migraciones automáticas** para cambios de DB
-5. **Convenciones de naming**: snake_case (Python), camelCase (JS/TS), PascalCase (Swift/Kotlin)
-6. **API REST** como única fuente de datos para Frontend/Mobile
+1. **Docker obligatorio** para el backend — la DB y la API corren en contenedores
+2. **TypeScript strict** en Frontend — no usar `any`
+3. **Testing requerido** para nuevas funcionalidades en todos los proyectos
+4. **Migraciones** para cualquier cambio de esquema de DB (nunca modificar directamente)
+5. **Soft deletes** — nunca borrar registros físicamente, usar `deleted_at`
+6. **API REST como única fuente de datos** — Frontend y Mobile no tienen lógica de negocio propia
+7. **Naming conventions**:
+   - Python: `snake_case`
+   - JS/TS: `camelCase` (variables/funciones), `PascalCase` (componentes/tipos)
+   - Kotlin/Swift: `camelCase` (variables), `PascalCase` (clases/structs)
 
-## Comandos Útiles
+## URLs del Sistema
 
-```bash
-# Desarrollo completo
-cd Backend && make start    # Iniciar backend
-cd Frontend && yarn dev     # Iniciar frontend
-
-# Reset completo de datos
-cd Backend && make seed-fresh
-
-# Ver logs de todos los servicios
-cd Backend && make logs
-```
-
-Esta memoria contiene toda la información necesaria para continuar el desarrollo del proyecto Platziflix.
-- Cualquier comando que necesites ejecutar para el Backend debe ser dentro del contenedor de docker API, antes de ejecutarlo certifica que esté funcionando el contenedor y revisa el archivo makefile con los comandos que existen y úsalos
+- **Frontend Web**: http://localhost:3000
+- **Backend API**: http://localhost:8001
+- **API Docs (Swagger)**: http://localhost:8001/docs
