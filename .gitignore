@@ -1,1 +1,7 @@
 *.pyc
+
+# IDE personal
+.cursor/
+
+# Memorias personales de Claude Code
+.claude/memory/
